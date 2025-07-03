@@ -31,6 +31,8 @@ def process_threats(
 
         # Step 1: Filter requirements by assets
         relevant_reqs = filter_requirements_by_assets(requirements, threat_assets)
+        if print_logs:
+            print(f"🔍 relevant_reqs: {relevant_reqs}")
 
         # Step 2: Get mitigations with justification
         mitigations = match_threat_to_requirements(
