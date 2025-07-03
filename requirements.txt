@@ -1,0 +1,8 @@
+pandas
+openpyxl
+httpx
+python-dotenv
+requests
+sentence-transformers
+scikit-learn
+streamlit
