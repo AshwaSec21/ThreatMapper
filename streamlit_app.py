@@ -40,7 +40,7 @@ enable_cache = st.checkbox("Enable caching", value=True)
 clear_cache = st.checkbox("Clear cache before run", value=False)
 print_tokens = st.checkbox("Print token count", value=True)
 print_logs = st.checkbox("Print LLM responses", value=False)
-asset_list = st.text_area("Known assets (comma-separated)", value="Switch, vCenter, OS, Firewall")
+asset_list = st.text_area("Known assets (comma-separated)", value="vCenter, Server, Switch, Firewall, NTP, OS ESXi, Workstation, BR Solution")
 
 # --- Main processing logic ---
 def run_matching(req_path, threat_path, chunk_size, print_tokens, print_logs, asset_list):
