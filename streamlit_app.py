@@ -54,7 +54,7 @@ def set_background(image_path):
         unsafe_allow_html=True
     )
 
-set_background("cyber_banner.png")
+#set_background("cyber_banner.png")
 st.title("🔐 Protype: Threat-to-Requirement Mapping Tool")
 
 # --- Upload UI
