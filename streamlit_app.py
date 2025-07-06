@@ -15,6 +15,7 @@ from file_paths import get_rmp_fallback_description, get_requirement_format_desc
 load_dotenv()
 
 st.set_page_config(page_title="Threat Mapper", layout="wide")
+st.image("cyber_banner.png", use_column_width=True, caption="🔐 Cybersecurity Threat Mapper")
 st.title("🔐 Protype: Threat-to-Requirement Mapping Tool")
 
 # --- File uploads (side by side) ---
@@ -27,7 +28,7 @@ with col2:
 
 # Define required columns
 required_req_columns = {"Requirement ID", "Description", "Assets Allocated to"}
-required_threat_columns = {"ID", "Title", "Category", "Interaction", "Description"}
+required_threat_columns = {"Id", "Title", "Category", "Interaction", "Description"}
 
 # Validate Requirements
 if req_file:
@@ -62,6 +63,13 @@ if threat_file:
     except Exception as e:
         st.error(f"❌ Failed to read Threats file: {e}")
         st.stop()
+# ✅ Reset file pointers to allow reading again later
+# ✅ Reset file pointers to allow reading again later
+if req_file:
+    req_file.seek(0)
+
+if threat_file:
+    threat_file.seek(0)
 
 # --- Advanced config in a collapsible expander ---
 with st.expander("⚙️ Advanced Configuration", expanded=False):
