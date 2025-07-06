@@ -25,7 +25,7 @@ with col1:
 with col2:
     threat_file = st.file_uploader("💀 Upload Threats Excel", type=["xlsx"])
 
-# --- Validate Uploaded Files ---
+# Define required columns
 required_req_columns = {"Requirement ID", "Description", "Assets Allocated to"}
 required_threat_columns = {"ID", "Title", "Category", "Interaction", "Description"}
 
@@ -33,9 +33,14 @@ required_threat_columns = {"ID", "Title", "Category", "Interaction", "Descriptio
 if req_file:
     try:
         req_df = pd.read_excel(req_file)
-        missing = required_req_columns - set(req_df.columns)
-        if missing:
-            st.error(f"❌ Requirements file is missing column(s): {', '.join(missing)}")
+        missing_req = required_req_columns - set(req_df.columns)
+        if missing_req:
+            st.error(
+                "❌ The uploaded Requirements file is missing the following required columns:\n\n" +
+                "\n".join(f"- {col}" for col in missing_req) +
+                "\n\n✅ Expected columns:\n" +
+                "\n".join(f"- {col}" for col in required_req_columns)
+            )
             st.stop()
     except Exception as e:
         st.error(f"❌ Failed to read Requirements file: {e}")
@@ -45,9 +50,14 @@ if req_file:
 if threat_file:
     try:
         threat_df = pd.read_excel(threat_file)
-        missing = required_threat_columns - set(threat_df.columns)
-        if missing:
-            st.error(f"❌ Threats file is missing column(s): {', '.join(missing)}")
+        missing_threat = required_threat_columns - set(threat_df.columns)
+        if missing_threat:
+            st.error(
+                "❌ The uploaded Threats file is missing the following required columns:\n\n" +
+                "\n".join(f"- {col}" for col in missing_threat) +
+                "\n\n✅ Expected columns:\n" +
+                "\n".join(f"- {col}" for col in required_threat_columns)
+            )
             st.stop()
     except Exception as e:
         st.error(f"❌ Failed to read Threats file: {e}")
