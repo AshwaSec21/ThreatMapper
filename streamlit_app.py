@@ -25,6 +25,34 @@ with col1:
 with col2:
     threat_file = st.file_uploader("💀 Upload Threats Excel", type=["xlsx"])
 
+# --- Validate Uploaded Files ---
+required_req_columns = {"Requirement ID", "Description", "Assets Allocated to"}
+required_threat_columns = {"ID", "Title", "Category", "Interaction", "Description"}
+
+# Validate Requirements
+if req_file:
+    try:
+        req_df = pd.read_excel(req_file)
+        missing = required_req_columns - set(req_df.columns)
+        if missing:
+            st.error(f"❌ Requirements file is missing column(s): {', '.join(missing)}")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Failed to read Requirements file: {e}")
+        st.stop()
+
+# Validate Threats
+if threat_file:
+    try:
+        threat_df = pd.read_excel(threat_file)
+        missing = required_threat_columns - set(threat_df.columns)
+        if missing:
+            st.error(f"❌ Threats file is missing column(s): {', '.join(missing)}")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Failed to read Threats file: {e}")
+        st.stop()
+
 # --- Advanced config in a collapsible expander ---
 with st.expander("⚙️ Advanced Configuration", expanded=False):
     model_provider = st.selectbox("Choose LLM Provider", ["openai", "mistral", "groq"])
