@@ -102,8 +102,8 @@ CandidateRequirements:
 
 def get_threat_assets(interaction: str, asset_list=None) -> list:
     """
-    Extract asset names from interaction (e.g., 'A to B'), filtering using known assets.
-    Matching is case-insensitive.
+    Extract asset names from interaction like 'AssetA to AssetB: description'.
+    Ignores everything after ':' and filters against known assets (case-insensitive).
     """
     if asset_list is None:
         asset_list = {
@@ -112,12 +112,21 @@ def get_threat_assets(interaction: str, asset_list=None) -> list:
             "Exported Projects", "BR Solution", "AVP Application Suite"
         }
 
-    # Normalize to lowercase for comparison
-    normalized_assets = {a.lower() for a in asset_list}
+    # Remove description part after the colon (if any)
+    interaction = interaction.split(":", 1)[0].strip()
 
-    return [asset.strip()
-            for asset in interaction.split("to")
-            if asset.strip().lower() in normalized_assets]
+    # Extract tokens around 'to' (with any amount of surrounding whitespace)
+    match = re.split(r"\s+to\s+", interaction, maxsplit=1, flags=re.IGNORECASE)
+
+    normalized_assets = {a.lower(): a for a in asset_list}  # keep original casing
+
+    found_assets = []
+    for token in match:
+        token_clean = token.strip().lower()
+        if token_clean in normalized_assets:
+            found_assets.append(normalized_assets[token_clean])
+
+    return found_assets
 
 def filter_requirements_by_assets(requirements, threat_assets):
     """
