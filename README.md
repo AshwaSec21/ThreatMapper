@@ -66,11 +66,11 @@ python3 --version
 ![Clone strict-embedding-mode](readme_images/step2_clone.png)
 
 ```bash
-git clone -b strict-embedding-mode https://github.com/AshwaSec21/ThreatMapper.git
+git clone -b feature/assets-detection-and-ui https://github.com/AshwaSec21/ThreatMapper.git
 cd ThreatMapper
 ```
 
-This ensures you’re on **strict-embedding-mode** immediately.
+This ensures you’re on **strict-embedding-mode + feature/assets-detection-and-ui** immediately.
 
 ---
 
