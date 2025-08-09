@@ -8,12 +8,20 @@ from llm_threat_mapper import (
 )
 
 # New: Import tokenizer from Hugging Face
-from transformers import AutoTokenizer
+#from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
+#tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
 
-def count_tokens(text):
-    return len(tokenizer.encode(text))
+#def count_tokens(text):
+#    return len(tokenizer.encode(text))
+# from transformers import AutoTokenizer  # DISABLED for offline use
+
+def _count_tokens(text, model_name):
+    """
+    Offline-safe token counting: approximates tokens by word count.
+    """
+    # If you want a char-based approximation, replace `.split()` with `len(text)`
+    return len(text.split())
 
 def chunk_list(items, chunk_size):
     """Yield successive chunks from a list."""
