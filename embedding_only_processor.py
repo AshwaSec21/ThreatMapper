@@ -5,27 +5,28 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer, util
 
 from strict_stride_rules import STRICT_RULES
-from llm_threat_mapper import get_threat_assets  # reuse only this (parses Interaction text)
+from llm_threat_mapper import get_threat_assets  # updated to also scan Description
 
-# -------- Optional: force fully-offline inference --------
-# os.environ["HF_HUB_OFFLINE"] = "1"
-# os.environ["TRANSFORMERS_OFFLINE"] = "1"
-# os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# ================================
+# Force fully offline local model
+# ================================
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-MODEL_CANDIDATES = [
-    "models/all-MiniLM-L6-v2",   # preferred local path (vendor this for full offline)
-    "all-MiniLM-L6-v2",          # fallback to hub (if allowed)
-]
+LOCAL_MODEL_PATH = os.path.join("models", "all-MiniLM-L6-v2")
 
-def _load_model():
-    for path in MODEL_CANDIDATES:
-        try:
-            return SentenceTransformer(path)
-        except Exception:
-            continue
-    return SentenceTransformer("all-MiniLM-L6-v2")
+if not os.path.isdir(LOCAL_MODEL_PATH):
+    raise RuntimeError(
+        f"SentenceTransformer model not found at '{LOCAL_MODEL_PATH}'.\n"
+        f"Place the downloaded model folder there (commit to Git) and try again.\n"
+        f"Tip (run at home):\n"
+        f'  python -c "from sentence_transformers import SentenceTransformer; '
+        f"m=SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); "
+        f'm.save(r\'{LOCAL_MODEL_PATH}\')"'
+    )
 
-model = _load_model()
+model = SentenceTransformer(LOCAL_MODEL_PATH)
 
 def _embed(texts):
     return model.encode(texts, convert_to_tensor=True, normalize_embeddings=True)
@@ -44,6 +45,7 @@ def _classify_direct(text, category):
     forb = rule.get("forbid_any", [])
     must_hits = _find_hits(text, must) if must else []
     forb_hits = _find_hits(text, forb) if forb else []
+
     if must and not must_hits:
         return ("None", [], [f"No direct anchor for {category}"])
     if forb and forb_hits and not must_hits:
@@ -76,14 +78,9 @@ def _normalize_req_columns(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         return df
 
-    # clean headers first
-    new_cols = [_clean_header(c) for c in df.columns]
-    df.columns = new_cols
-
-    # lookup dict (lowercased)
+    df.columns = [_clean_header(c) for c in df.columns]
     current = {c.lower(): c for c in df.columns}
 
-    # aliases (lowercased keys); map to exact canonical names
     alias_map = {
         "requirement id": "Requirement ID",
         "req id": "Requirement ID",
@@ -118,9 +115,10 @@ def _validate_requirements_df(df: pd.DataFrame):
     required_columns = {"Requirement ID", "Description"}
     missing = required_columns - set(df.columns)
     if missing:
-        # Helpful debug: show available columns
-        raise ValueError(f"requirements_df missing required columns: {missing}. "
-                         f"Available: {list(df.columns)}")
+        raise ValueError(
+            f"requirements_df missing required columns: {missing}. "
+            f"Available: {list(df.columns)}"
+        )
 
 def _build_req_embs(df: pd.DataFrame):
     _validate_requirements_df(df)
@@ -170,7 +168,6 @@ def _rank_by_stride(df: pd.DataFrame, threat_row, threshold=0.70, alpha=0.80):
     ttext = f"{title}. {desc}".strip()
 
     must_any = STRICT_RULES.get(category, {}).get("must_any", [])
-    # Convert regex anchors to readable phrases for embeddings
     canonical = [re.sub(r"\\b|\\(|\\)|\\?|\\+|\\*|\\[|\\]|\\||\\^|\\$|-", " ", p) for p in must_any]
     canonical = [re.sub(r"\s+", " ", c).strip() for c in canonical if c]
 
@@ -201,6 +198,10 @@ def _rank_by_stride(df: pd.DataFrame, threat_row, threshold=0.70, alpha=0.80):
     out = out.sort_values("SimilarityScore", ascending=False)
     return out
 
+def _req_has_assets_col(df: pd.DataFrame) -> bool:
+    lc = {c.lower() for c in df.columns}
+    return ("assets allocated to" in lc) or ("assets" in lc) or ("allocated assets" in lc) or ("asset" in lc)
+
 def process_threats_embedding(
     threats_df: pd.DataFrame,
     requirements_df,  # accept DataFrame or list[dict]
@@ -212,9 +213,11 @@ def process_threats_embedding(
 ) -> pd.DataFrame:
     """
     LLM-free pipeline:
-      1) Asset filter (on DataFrame)
-      2) Rule-based Direct/Indirect/None using STRICT_RULES
-      3) Rank Directs (optional) and, if allowed + needed, Indirects by embeddings
+      0) Detect assets from Interaction; fallback to Description if needed
+      1) If assets not detected BUT asset scoping is expected -> emit a short reason and skip misleading matches
+      2) Otherwise, asset filter (on DataFrame) where possible
+      3) Rule-based Direct/Indirect/None using STRICT_RULES
+      4) Rank Directs (and optionally Indirects) by embeddings
     """
     # Normalize → DataFrame → normalize headers → validate
     requirements_df = _to_dataframe(requirements_df)
@@ -223,12 +226,38 @@ def process_threats_embedding(
 
     rows = []
     for _, threat in threats_df.iterrows():
-        # 1) Asset filter
-        threat_assets = get_threat_assets(threat.get("Interaction", ""), asset_list)
-        filtered = _filter_requirements_by_assets_df(requirements_df, threat_assets) if asset_list else requirements_df
+        # 0) Detect assets (Interaction → Description fallback)
+        threat_assets = get_threat_assets(
+            threat.get("Interaction", ""),
+            asset_list or [],
+            description=threat.get("Description", "")
+        )
+
+        # Determine if we *expect* assets to scope: either we have a UI asset list, or reqs have an assets column
+        expect_asset_scope = (asset_list and len(asset_list) > 0) or _req_has_assets_col(requirements_df)
+
+        # 1) If we expect asset scoping but couldn't detect any assets → emit reason and continue
+        if expect_asset_scope and len(threat_assets) == 0:
+            rows.append({
+                "Threat ID": threat.get("Id"),
+                "Threat Title": threat.get("Title"),
+                "Category": threat.get("Category"),
+                "Threat Interaction": threat.get("Interaction", ""),
+                "Threat Description": threat.get("Description", ""),
+                "Mitigation Verdict": "No mapping (asset not detected)",
+                "Matched Requirement ID": "",
+                "Matched Requirement Description": "",
+                "Similarity Score": "",
+                "Evidence": "",
+                "Reason": "No asset found in Interaction/Description",
+            })
+            continue  # do not try to match blindly (prevents misleading results)
+
+        # 2) Asset filter where possible
+        filtered = _filter_requirements_by_assets_df(requirements_df, threat_assets) if threat_assets else requirements_df
         filtered = _normalize_req_columns(filtered)
 
-        # 2) Rule classify (Direct/Indirect/None)
+        # 3) Rule classify (Direct/Indirect/None)
         verdict_records = []
         for _, r in filtered.iterrows():
             text = f"{r.get('Requirement ID','')} :: {r.get('Description','')}"
@@ -241,10 +270,10 @@ def process_threats_embedding(
         filtered["Evidence"] = filtered["Requirement ID"].map(lambda x: ", ".join(vmap.get(x, ("None", [], []))[1]))
         filtered["Reason"] = filtered["Requirement ID"].map(lambda x: "; ".join(vmap.get(x, ("None", [], []))[2]))
 
-        # 3) Ranking
+        # 4) Ranking
         direct_df = filtered[filtered["Verdict"] == "Direct"]
         if len(direct_df) > 0:
-            ranked = _rank_by_stride(direct_df, threat, threshold=0.0, alpha=alpha)  # keep all directs
+            ranked = _rank_by_stride(direct_df, threat, threshold=0.0, alpha=alpha)  # keep all directs; score only for sort
         else:
             ranked = pd.DataFrame(columns=filtered.columns.tolist() + ["SimilarityScore", "MatchBasis"])
 

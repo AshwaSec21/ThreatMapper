@@ -1,164 +1,87 @@
 import re
-from sentence_transformers import SentenceTransformer, util
 
-# Load embedding model once
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# ... other imports/utilities in your module stay as-is ...
 
-def generate_llm_prompt(threat, filtered_requirements, rmp_context, req_structure_hint, asset_list=None):
-    import yaml
-    from llm_threat_mapper import get_threat_assets
 
-    threat_assets = get_threat_assets(threat.get("Interaction", ""), asset_list)
-    asset_hint = ", ".join(threat_assets)
+def _normalize(s):
+    return (s or "").strip().lower()
 
-    threat_yaml = yaml.dump({
-        "ID": threat["Id"],
-        "Title": threat["Title"],
-        "Category": threat["Category"],
-        "Interaction": threat["Interaction"],
-        "Description": threat["Description"]
-    }, default_flow_style=False)
 
-    candidate_reqs_yaml = yaml.dump([
-        {"ID": r["id"], "Text": r["text"]}
-        for r in filtered_requirements
-    ], default_flow_style=False)
-
-    instructions = f"""
-You are given two YAML blocks: one called `Threat`, and one called `CandidateRequirements`.
-
-Your job is to:
-- ONLY include requirements that **explicitly and functionally** mitigate the described threat.
-- Consider that all CandidateRequirements are already **filtered by asset relevance**: they are allocated to these assets → {asset_hint}
-- Match requirements **based on semantic alignment** with the threat **Category** (e.g., Elevation Of Privilege, Information Disclosure, etc.)
-- Explain how the requirement mitigates the threat **in function**, not just keyword overlap.
-
-Output format MUST be in JSON. The JSON should be an object with a single key "mitigations", whose value is a list of objects. Each object in this list MUST have the following keys:
-- "requirement": (string) — a single requirement ID such as "[AVP_PCyA_2099]"
-- "justification": (string) — an explanation of how this requirement mitigates the given threat.
-
-If, and only if, NO requirements are found that effectively mitigate the given threat, the "mitigations" list SHOULD be empty. DO NOT return "None", "Not Applicable", or similar strings within the list items if no mitigations are found. Instead, return an empty list.
-
-Example expected JSON structure for mitigations found:
-{{
-  "mitigations": [
-    {{
-      "requirement": "[AVP_PCyA_2099]",
-      "justification": "TLS client authentication ensures only authorized entities (like Switch) are allowed to interact with vCenter."
-    }},
-    {{
-      "requirement": "[AVP_PCyA_2527]",
-      "justification": "RBAC restricts access based on predefined roles, limiting what impersonated users can do."
-    }}
-  ]
-}}
-
-Example expected JSON structure when NO mitigations are found:
-{{
-  "mitigations": []
-}}
-
-Requirement Metadata Notes:
-{rmp_context}
-
-Requirement Format Hint:
-{req_structure_hint}
-Very important instructions:
-- Your entire response MUST ONLY be a valid JSON block that strictly follows the structure below.
-- DO NOT explain your reasoning outside the JSON.
-- DO NOT write any introduction, summary, or commentary before or after the JSON.
-- DO NOT format the JSON as Markdown (no triple backticks).
-- Just respond with raw JSON.
-
-The required JSON structure is:
-
-{{
-  "mitigations": [
-    {{
-      "requirement": "[requirement_id]",
-      "justification": "Short but precise justification."
-    }}
-  ]
-}}
-
-If no requirement matches, return:
-
-{{
-  "mitigations": []
-}}
-
-"""
-
-    prompt = f"""{instructions.strip()}
-
-Threat:
-{threat_yaml}
-
-CandidateRequirements:
-{candidate_reqs_yaml}
-"""
-    return prompt.strip()
- 
-
-def get_threat_assets(interaction: str, asset_list=None) -> list:
+def _split_before_colon(text):
     """
-    Extract asset names from interaction like 'AssetA to AssetB: description'.
-    Ignores everything after ':' and filters against known assets (case-insensitive).
+    Return the left side before the first colon and the full text.
+    E.g., "Firewall to NTP: request" -> ("Firewall to NTP", "Firewall to NTP: request")
     """
-    if asset_list is None:
-        asset_list = {
-            "vCenter Server", "Switch", "Firewall", "NTP", "OS ESXi", "Harvester",
-            "Exported CSP", "OS Linux", "OS Windows", "vCenter", "Workstation",
-            "Exported Projects", "BR Solution", "AVP Application Suite"
-        }
+    if not text:
+        return "", ""
+    parts = text.split(":", 1)
+    if len(parts) == 2:
+        return parts[0].strip(), text
+    return "", text
 
-    # Remove description part after the colon (if any)
-    interaction = interaction.split(":", 1)[0].strip()
 
-    # Extract tokens around 'to' (with any amount of surrounding whitespace)
-    match = re.split(r"\s+to\s+", interaction, maxsplit=1, flags=re.IGNORECASE)
-
-    normalized_assets = {a.lower(): a for a in asset_list}  # keep original casing
-
-    found_assets = []
-    for token in match:
-        token_clean = token.strip().lower()
-        if token_clean in normalized_assets:
-            found_assets.append(normalized_assets[token_clean])
-
-    return found_assets
-
-def filter_requirements_by_assets(requirements, threat_assets):
+def _match_assets_in_text(text, asset_list):
     """
-    Return only requirements that reference one or more of the threat-involved assets.
-    Comparison is case-insensitive.
+    Case-insensitive containment check of known assets inside text.
+    Returns unique matched asset names as they appear in asset_list (original casing).
     """
-    filtered = []
-    threat_assets_lower = [a.lower() for a in threat_assets]
+    if not text or not asset_list:
+        return []
+    txt = _normalize(text)
+    hits = []
+    for a in asset_list:
+        if not a:
+            continue
+        if _normalize(a) in txt:
+            hits.append(a)
+    # preserve input order uniqueness
+    seen = set()
+    out = []
+    for a in hits:
+        if a not in seen:
+            out.append(a)
+            seen.add(a)
+    return out
 
-    for req in requirements:
-        allocated_assets = [a.strip().lower() for a in re.split(r'[,|\n]+', req["assets"])]
-        if any(asset in allocated_assets for asset in threat_assets_lower):
-            filtered.append(req)
 
-    return filtered
-
-def is_requirement_relevant_to_threat(threat_category, req_text):
+def get_threat_assets(interaction, asset_list, description=None):
     """
-    Use semantic similarity to determine if the requirement aligns with the STRIDE category.
+    Extract involved assets for a threat.
+    Strategy:
+      1) Try "prefix before colon" from Interaction (e.g., "Firewall to NTP: ...") and split by common separators.
+      2) If none found, scan Interaction FULL text against asset_list.
+      3) If still none and 'description' provided, scan Description full text.
+
+    Returns: list[str] of matched assets (unique, original casing from asset_list).
     """
-    canonical_mitigation = {
-        "elevation of privilege": "requirement must enforce privilege separation and authorization",
-        "spoofing": "requirement must authenticate and verify identity",
-        "information disclosure": "requirement must ensure confidentiality through encryption or access control",
-        "tampering": "requirement must preserve data integrity and resist tampering",
-        "repudiation": "requirement must support audit logging and traceability",
-        "denial of service": "requirement must protect availability and throttle excessive input"
-    }
+    assets = []
 
-    reference = canonical_mitigation.get(threat_category.lower())
-    if not reference:
-        return False
+    # 1) Parse "before colon" pattern (preferred for MS TMT exports)
+    left, _ = _split_before_colon(interaction or "")
+    if left:
+        # split by common separators
+        candidates = re.split(r"\bto\b|,|;|/|\\|\|", left, flags=re.IGNORECASE)
+        for c in candidates:
+            cand = c.strip()
+            if cand:
+                # exact containment match against asset_list
+                for a in asset_list or []:
+                    if _normalize(a) == _normalize(cand) or _normalize(a) in _normalize(cand):
+                        assets.append(a)
 
-    sim_score = util.cos_sim(model.encode(reference), model.encode(req_text))[0][0].item()
-    return sim_score > 0.6
+    # 2) Fallback: scan full Interaction
+    if not assets:
+        assets = _match_assets_in_text(interaction, asset_list)
+
+    # 3) Fallback: scan Description as well
+    if not assets and description:
+        assets = _match_assets_in_text(description, asset_list)
+
+    # Uniq, preserve order
+    seen = set()
+    uniq = []
+    for a in assets:
+        if a not in seen:
+            uniq.append(a)
+            seen.add(a)
+    return uniq
