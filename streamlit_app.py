@@ -127,11 +127,24 @@ if user_key:
     os.environ[env_key_map[model_provider]] = user_key
 
 # --- Main runner
+
 def run_matching(req_path, threat_path, chunk_size, print_tokens, print_logs, asset_list):
     threats_df = read_threats(threat_path)
     requirements = read_requirements(req_path)
     rmp_context = get_rmp_fallback_description()
     req_structure_hint = get_requirement_format_description()
+
+    if mode.startswith("Embedding"):
+        from embedding_only_processor import process_threats_embedding
+        return process_threats_embedding(
+            threats_df,
+            requirements,
+            asset_list=[a.strip() for a in asset_list.split(",") if a.strip()],
+            threshold=threshold,
+            alpha=alpha,
+            strict_direct_only=strict_direct_only,
+            show_indirect=show_indirect,
+        )
 
     return process_threats(
         threats_df,
@@ -144,31 +157,3 @@ def run_matching(req_path, threat_path, chunk_size, print_tokens, print_logs, as
         print_logs=print_logs,
         asset_list=[a.strip() for a in asset_list.split(",") if a.strip()]
     )
-
-# --- Trigger
-if st.button("🚀 Run Matching") and req_file and threat_file:
-    st.write("🔍 Processing...")
-
-    if clear_cache:
-        clear_cache_file()
-        st.info("✅ Cache cleared.")
-
-    req_path = f"uploaded_{uuid.uuid4().hex}_requirements.xlsx"
-    threat_path = f"uploaded_{uuid.uuid4().hex}_threats.xlsx"
-    with open(req_path, "wb") as f:
-        f.write(req_file.read())
-    with open(threat_path, "wb") as f:
-        f.write(threat_file.read())
-
-    try:
-        result_df = run_matching(req_path, threat_path, chunk_size, print_tokens, print_logs, asset_list)
-    finally:
-        try:
-            os.remove(req_path)
-            os.remove(threat_path)
-        except Exception as e:
-            st.warning(f"⚠️ Failed to clean up uploaded files: {e}")
-
-    st.success("✅ Matching completed!")
-    st.dataframe(result_df)
-    st.download_button("💾 Download Results", result_df.to_csv(index=False).encode(), "matched_results.csv", "text/csv")

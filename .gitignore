@@ -1,6 +1,12 @@
-.env 
-A-0000357719-PCyA-AVP-vD.xlsx 
-Mitigated_Threats_18_Jun_2025.csv 
-threats_with_requirements.xlsx 
-Threats_18_Jun_2025.csv 
-"Threats_18_Jun_2025 - Copy.xlsx" 
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Local environment files
+.env
+
+# Ignore all Excel and CSV test data
+*.xlsx
+*.xls
+*.csv
