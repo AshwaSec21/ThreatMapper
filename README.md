@@ -1,146 +1,102 @@
-# ThreatMapper (Strict Embedding Mode)
+# ThreatMapper
 
-This tool matches cybersecurity threats (from Microsoft Threat Modeling Tool exports) to existing cybersecurity requirements, **without external AI APIs**.  
-It uses **local SentenceTransformer embeddings** + **Strict STRIDE rules**, so it runs in restricted corporate networks.
+ThreatMapper is a **Streamlit-based cybersecurity tool** that maps threats (from the Microsoft Threat Modeling Tool) to existing cybersecurity requirements using:
+- **Asset-based filtering**
+- **Rule-based STRIDE matching**
+- **Semantic similarity via sentence-transformers embeddings**
+- **(Optional) LLM-based reasoning for more accurate mappings**
 
-> **Assumption:** Team members have **Visual Studio Code (VS Code)** installed **from our Organization AppStore**. If not, please install it from the AppStore first.
+The tool can run entirely **offline** using a locally downloaded embedding model.
 
 ---
 
-## 1) Check & install prerequisites (in VS Code Terminal)
+## Features
+- **Asset filtering**: Match requirements only to threats targeting the same assets.
+- **Strict STRIDE rules**: Direct / Indirect / No match classification.
+- **Semantic search**: Uses `all-MiniLM-L6-v2` embeddings for fuzzy matching.
+- **Streamlit UI**: Upload threat and requirement files, configure settings, and export results.
+- **Offline mode**: Works without internet if the model is downloaded locally.
 
-![Check Git & Python](readme_images/step1_check.png)
+---
 
-
-**Windows quick install via `winget` (inside VS Code Terminal):**
-
-![Install via winget](readme_images/step1_winget.png)
-
-
-Open **VS Code → View → Terminal**, then check versions:
-```bash
-git --version
-python --version
+## Project Structure
 ```
-
-### If NOT installed, install directly from the VS Code terminal
-
-#### Windows (recommended: **winget**, no admin typically required)
-```powershell
-# Install Git
-winget install --id Git.Git -e
-
-# Install Python 3.11 (or latest allowed)
-winget install --id Python.Python.3.11 -e
-
-# After install, restart VS Code terminal and verify:
-git --version
-python --version
-```
-
-> If `winget` is not available or blocked, use the Organization AppStore instead.
-
-#### macOS (Homebrew)
-```bash
-# If Homebrew is installed:
-brew install git
-brew install python@3.11
-
-# Verify:
-git --version
-python3 --version
-```
-
-#### Ubuntu/Debian (APT)
-```bash
-sudo apt-get update
-sudo apt-get install -y git python3 python3-venv python3-pip
-git --version
-python3 --version
+.
+├── embedding_only_processor.py   # Offline embedding-based matching
+├── llm_matcher.py                 # LLM-based matching logic
+├── llm_threat_mapper.py           # Common helper functions (e.g., asset extraction)
+├── streamlit_app.py               # Streamlit user interface
+├── strict_stride_rules.py         # STRIDE matching rules
+├── threat_processor.py            # Orchestrates the processing pipeline
+├── requirements.txt               # Python dependencies
+└── models/                        # Local embedding models (optional, for offline)
 ```
 
 ---
 
-## 2) Clone the **correct branch** (not master)
+## Installation
 
-![Clone strict-embedding-mode](readme_images/step2_clone.png)
-
+### 1. Clone the repository
 ```bash
-git clone -b feature/assets-detection-and-ui https://github.com/AshwaSec21/ThreatMapper.git
+git clone https://github.com/<your-username>/ThreatMapper.git
 cd ThreatMapper
 ```
 
-This ensures you’re on **strict-embedding-mode + feature/assets-detection-and-ui** immediately.
-
----
-
-## 3) Create & activate virtual environment
-
-![Create & activate venv](readme_images/step3_venv.png)
-
+### 2. Create a virtual environment (recommended)
 ```bash
 python -m venv .venv
-. .venv\Scripts\Activate.ps1   # Windows PowerShell
-```
-If activation fails:
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-. .venv\Scripts\Activate.ps1
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
----
-
-## 4) Install & Run
-
-![Install & run](readme_images/step4_run.png)
-
+### 3. Install dependencies
 ```bash
-pip install --upgrade pip
 pip install -r requirements.txt
+```
 
-# If Torch install fails on Windows:
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
 
-# Start the app:
+
+## Usage
+
+### 1. Run Streamlit App
+```bash
 streamlit run streamlit_app.py
 ```
 
-The app opens at `http://localhost:8501`.
+### 2. In the browser UI:
+- Upload:
+  - **Threats File**: Export from Microsoft Threat Modeling Tool (Excel format)
+  - **Requirements File**: Cybersecurity requirements (Excel format)
+- Configure:
+  - Model type (LLM or embedding-only)
+  - Chunk size (for large files)
+  - Asset list
+  - Similarity threshold
+- Click **Run Mapping** to see results
+- Export the results to CSV
 
 ---
 
-## Using the App
+## Requirements File Format
+Your requirements file **must** contain these columns:
+- `Requirement ID`
+- `Description`
+- `Assets Allocated to` *(optional but improves accuracy)*
 
-1. Upload **Requirements** (Excel) with columns:
-   - `Requirement ID`
+---
+
+## Threats File Format
+Threat file should be exported from **Microsoft Threat Modeling Tool** with:
+   - `Id`
+   - `Title`
+   - `Category`
+   - `Interaction` *(recommended: use format "Asset1 to Asset2: <description>" for best accuracy; 
+      if missing or unclear, tool will try detecting from `Description` but results may be less accurate)*
    - `Description`
-   - `Assets Allocated to` *(optional but recommended)*
-2. Upload **Threats** (Excel export from MS Threat Modeling Tool) with columns:
-   - `Id`, `Title`, `Category`, `Interaction`, `Description`
-3. Choose **Embedding-only (Strict STRIDE)** mode (LLM mode may be blocked by firewall).
-4. Adjust **Similarity Threshold** and **α (category weight)** as needed.
-5. Click **🚀 Run Matching** and download results as CSV.
+
+## License
+MIT License — free to use and modify.
 
 ---
 
-## Offline Notes
-
-- Embedding model loads from `models/all-MiniLM-L6-v2`.
-- Runtime is offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`).
-- If the model folder is missing, ask a teammate or pull latest from GitHub.
-
----
-
-## Troubleshooting
-
-- **No module named X** → Ensure venv is active and `pip install -r requirements.txt` completed without errors.
-- **Torch install issues** → Use the CPU-only index shown above.
-- **Port busy** → `streamlit run streamlit_app.py --server.port 8502`
-- **LLM mode not working** → Expected in corporate network; use Embedding-only mode.
-
----
-
-## Maintainer
-
-**Ashwath Kumar** — Prototype focused on AVP/OSP; adaptable to other platforms.
+## Author
+Developed by **Ashwath Kumar** — AI-assisted threat-to-requirement mapping tool for cybersecurity compliance.
