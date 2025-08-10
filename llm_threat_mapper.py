@@ -63,6 +63,20 @@ def get_threat_assets(interaction, asset_list, description=None):
             uniq.append(a)
             seen.add(a)
     return uniq
+def filter_requirements_by_assets(requirements, threat_assets):
+    """
+    Return only requirements that reference one or more of the threat-involved assets.
+    Comparison is case-insensitive.
+    """
+    filtered = []
+    threat_assets_lower = [a.lower() for a in threat_assets]
+
+    for req in requirements:
+        allocated_assets = [a.strip().lower() for a in re.split(r'[,|\n]+', req["assets"])]
+        if any(asset in allocated_assets for asset in threat_assets_lower):
+            filtered.append(req)
+
+    return filtered
 
 # ---------- (LLM path) prompt generator ----------
 def generate_llm_prompt(threat, filtered_requirements, rmp_context, req_structure_hint, asset_list=None):
