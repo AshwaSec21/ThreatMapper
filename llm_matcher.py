@@ -3,8 +3,6 @@ from llm_utils import call_llm
 from llm_threat_mapper import (
     generate_llm_prompt,
     get_threat_assets,
-    filter_requirements_by_assets,
-    is_requirement_relevant_to_threat,
 )
 
 # New: Import tokenizer from Hugging Face
@@ -22,7 +20,7 @@ def _count_tokens(text, model_name):
     """
     # If you want a char-based approximation, replace `.split()` with `len(text)`
     return len(text.split())
-
+count_tokens = _count_tokens
 def chunk_list(items, chunk_size):
     """Yield successive chunks from a list."""
     for i in range(0, len(items), chunk_size):
