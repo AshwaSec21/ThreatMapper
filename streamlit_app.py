@@ -139,14 +139,14 @@ with st.expander("⚙️ Advanced Configuration", expanded=False):
     print_tokens = st.checkbox("🔢 Print token count (LLM only)", value=True)
     print_logs = st.checkbox("📜 Print LLM responses (LLM only)", value=False)
 
-    # MANDATORY if Requirements has no assets column
-    asset_list_input = st.text_input(
-        "Known Asset List (comma-separated)",
-        value="",
-        placeholder="e.g., vCenter Server, Switch, Firewall, NTP, OS Linux, OS Windows, Workstation",
-        help="REQUIRED if your Requirements sheet does NOT contain an 'Assets Allocated to' column."
-    )
-    asset_list = [a.strip() for a in asset_list_input.split(",") if a.strip()]
+# MANDATORY if Requirements has no assets column
+asset_list_input = st.text_input(
+    "Known Asset List (comma-separated)",
+    value="",
+    placeholder="e.g., vCenter Server, Switch, Firewall, NTP, OS Linux, OS Windows, Workstation",
+    help="REQUIRED if your Requirements sheet does NOT contain an 'Assets Allocated to' column."
+)
+asset_list = [a.strip() for a in asset_list_input.split(",") if a.strip()]
 
 # set env for LLM
 if model_provider:
